@@ -114,6 +114,28 @@ def _statistic(statistics: Any, *names: str) -> Any:
     return None
 
 
+def _repeaters(statistics: Any) -> list[int]:
+    """The nodes a message actually hops through, controller-side first.
+
+    Z-Wave JS records the *last working route* per node, and that is the
+    real topology -- not a guess. Confirmed against a live network: it
+    lives at ``statistics.lwr.repeaters`` and is an empty list for a node
+    the controller reaches directly, which is most of them in a small
+    house.
+
+    Everything here is defensive on purpose. This is another
+    integration's internal shape, and a floor plan that disappears
+    because a repeater list arrived as a tuple is a bad trade.
+    """
+    route = _statistic(statistics, "lwr", "last_working_route")
+    if route is None:
+        return []
+    hops = _statistic(route, "repeaters")
+    if not isinstance(hops, (list, tuple)):
+        return []
+    return [hop for hop in hops if isinstance(hop, int)]
+
+
 def _from_driver(hass: HomeAssistant, driver: Any) -> dict[str, list]:
     controller = driver.controller
     own_id = getattr(getattr(controller, "own_node_id", None), "real", None) or getattr(
@@ -172,20 +194,38 @@ def _from_driver(hass: HomeAssistant, driver: Any) -> dict[str, list]:
                 verloren=_statistic(statistics, "commands_dropped_tx"),
             )
         )
-        edges.append(
-            edge(
-                CONTROLLER_ID,
-                f"node-{node_id}",
-                value=rssi,
-                quality=_quality(rssi),
-                # Z-Wave routes through repeaters; this line is "reachable
-                # from the controller", not the physical path. Dashed says
-                # so without pretending to know the hops.
-                dashed=True,
+        # The route the controller last got through on. With repeaters
+        # this draws the actual chain -- controller → repeater → node --
+        # instead of one straight line to a device that is in fact three
+        # rooms and two hops away. That chain is the thing a mesh map is
+        # for: it says which node everything else depends on.
+        hops = _repeaters(statistics)
+        chain = [CONTROLLER_ID, *[f"node-{hop}" for hop in hops],
+                 f"node-{node_id}"]
+        for index in range(len(chain) - 1):
+            last = index == len(chain) - 2
+            edges.append(
+                edge(
+                    chain[index],
+                    chain[index + 1],
+                    # Only the final hop carries this node's own signal
+                    # reading. The ones before it belong to other nodes.
+                    value=rssi if last else None,
+                    quality=_quality(rssi) if last else "unknown",
+                    # Solid where the route is known, dashed where it is
+                    # not: a straight line to the controller means
+                    # "reachable", and must not read as "wired like this".
+                    dashed=not hops,
+                    hops=len(hops),
+                )
             )
-        )
 
-    return {"nodes": nodes, "edges": edges}
+    # A repeater appears once per node that routes through it, so the same
+    # hop is drawn many times. The renderer would stack identical lines.
+    seen: dict[tuple, dict] = {}
+    for line in edges:
+        seen.setdefault((line["source"], line["target"]), line)
+    return {"nodes": nodes, "edges": list(seen.values())}
 
 
 def _from_registry(hass: HomeAssistant) -> dict[str, list]:
@@ -246,7 +286,7 @@ def async_setup_spatial(hass: HomeAssistant, entry: Any) -> None:
         name="Z-Wave",
         icon="mdi:z-wave",
         data=data,
-        version="0.1.0",
+        version="260728",
     )
 
     # Z-Wave JS fires no signal this integration could listen to, so the

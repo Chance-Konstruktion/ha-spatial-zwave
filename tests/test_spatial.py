@@ -24,11 +24,23 @@ from custom_components.spatial_zwave.spatial import (
 # ── Z-Wave JS stand-ins ───────────────────────────────────────────────
 
 
+class FakeRoute:
+    """statistics.lwr, in the shape a live network actually reports."""
+
+    def __init__(self, repeaters=(), rssi=None):
+        self.repeaters = list(repeaters)
+        self.rssi = rssi
+        self.repeaterRSSI = []
+        self.protocolDataRate = 2
+
+
 class FakeStatistics:
-    def __init__(self, rssi=None, commands_tx=None, commands_dropped_tx=None):
+    def __init__(self, rssi=None, commands_tx=None, commands_dropped_tx=None,
+                 repeaters=()):
         self.rssi = rssi
         self.commands_tx = commands_tx
         self.commands_dropped_tx = commands_dropped_tx
+        self.lwr = FakeRoute(repeaters, rssi)
 
 
 class FakeDeviceConfig:
@@ -39,12 +51,13 @@ class FakeDeviceConfig:
 
 class FakeNode:
     def __init__(self, node_id, *, name="", status="alive", rssi=-62,
-                 firmware_version="1.2"):
+                 firmware_version="1.2", repeaters=()):
         self.node_id = node_id
         self.name = name
         self.status = status
         self.statistics = FakeStatistics(rssi, commands_tx=140,
-                                         commands_dropped_tx=2)
+                                         commands_dropped_tx=2,
+                                         repeaters=repeaters)
         self.device_config = FakeDeviceConfig()
         self.firmware_version = firmware_version
 
@@ -283,3 +296,95 @@ def test_both_shapes_zwave_js_has_used_are_read():
         assert len(payload(hass)["nodes"]) == 3, (
             f"client as {'dict entry' if as_dict else 'attribute'} not found"
         )
+
+
+# ── The route, not a star ─────────────────────────────────────────────
+
+
+def test_a_direct_node_is_one_hop_from_the_controller(mesh_or_none=None):
+    """Most nodes in a small house have no repeaters; the route is empty."""
+    hass = FakeHass()
+    install_driver(hass, FakeDriver([FakeNode(2, name="Nah", repeaters=[])]))
+    edges = payload(hass)["edges"]
+
+    assert len(edges) == 1
+    assert edges[0]["source"] == CONTROLLER_ID
+    assert edges[0]["target"] == "node-2"
+    assert edges[0]["dashed"], "no route known means the line is a claim"
+
+
+def test_a_repeated_node_is_drawn_through_its_repeater():
+    """The whole point of a mesh map: which node everything depends on."""
+    hass = FakeHass()
+    install_driver(hass, FakeDriver([
+        FakeNode(2, name="Repeater"),
+        FakeNode(7, name="Weit weg", repeaters=[2]),
+    ]))
+    hops = {(e["source"], e["target"]) for e in payload(hass)["edges"]}
+
+    assert (CONTROLLER_ID, "node-2") in hops
+    assert ("node-2", "node-7") in hops
+    assert (CONTROLLER_ID, "node-7") not in hops, (
+        "a straight line to the controller would hide the dependency"
+    )
+
+
+def test_a_known_route_is_drawn_solid():
+    hass = FakeHass()
+    install_driver(hass, FakeDriver([
+        FakeNode(2, name="Repeater"),
+        FakeNode(7, name="Weit weg", repeaters=[2]),
+    ]))
+    routed = [e for e in payload(hass)["edges"] if e["target"] == "node-7"]
+
+    assert routed and not routed[0]["dashed"], "a measured hop is not a guess"
+
+
+def test_two_nodes_behind_one_repeater_do_not_stack_the_same_line():
+    hass = FakeHass()
+    install_driver(hass, FakeDriver([
+        FakeNode(2, name="Repeater"),
+        FakeNode(7, name="A", repeaters=[2]),
+        FakeNode(8, name="B", repeaters=[2]),
+    ]))
+    edges = payload(hass)["edges"]
+    first = [e for e in edges if (e["source"], e["target"]) == (CONTROLLER_ID, "node-2")]
+
+    assert len(first) == 1, "the shared hop is one line, drawn once"
+
+
+def test_a_two_hop_route_keeps_both_hops_in_order():
+    hass = FakeHass()
+    install_driver(hass, FakeDriver([
+        FakeNode(2), FakeNode(3), FakeNode(9, name="Ganz hinten", repeaters=[2, 3]),
+    ]))
+    hops = {(e["source"], e["target"]) for e in payload(hass)["edges"]}
+
+    assert (CONTROLLER_ID, "node-2") in hops
+    assert ("node-2", "node-3") in hops
+    assert ("node-3", "node-9") in hops
+
+
+def test_only_the_last_hop_carries_the_nodes_own_signal():
+    """The hops before it belong to other nodes and are not this one's."""
+    hass = FakeHass()
+    install_driver(hass, FakeDriver([
+        FakeNode(2, name="Repeater", rssi=-55),
+        FakeNode(7, name="Weit weg", rssi=-91, repeaters=[2]),
+    ]))
+    last = next(e for e in payload(hass)["edges"] if e["target"] == "node-7")
+
+    assert last["value"] == -91
+    assert last["quality"] == "poor"
+
+
+def test_a_route_in_a_shape_we_did_not_expect_costs_nothing():
+    """Another integration's internals. A floor plan must not vanish
+    because a repeater list arrived as something else."""
+    hass = FakeHass()
+    driver = FakeDriver([FakeNode(2)])
+    driver.controller.nodes[2].statistics.lwr = "not a route at all"
+    install_driver(hass, driver)
+
+    edges = payload(hass)["edges"]
+    assert len(edges) == 1 and edges[0]["dashed"], "falls back to the star"

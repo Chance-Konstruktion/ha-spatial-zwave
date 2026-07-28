@@ -1,0 +1,8 @@
+{
+  "name": "Spatial Hub: Z-Wave",
+  "content_in_root": false,
+  "render_readme": true,
+  "homeassistant": "2024.4.0",
+  "zip_release": true,
+  "filename": "spatial_zwave.zip"
+}

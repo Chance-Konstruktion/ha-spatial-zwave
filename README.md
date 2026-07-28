@@ -5,9 +5,9 @@ seinem Bereich und dazwischen eine Linie, deren Farbe sagt, wie gut die
 Verbindung ist.
 
 Diese Integration rendert nichts selbst. Sie meldet ihre Daten bei
-[Spatial Hub](https://github.com/Chance-Konstruktion) an — der Hub
-entscheidet, wo gezeichnet wird. Ohne installierten Hub tut sie nichts,
-kostet aber auch nichts.
+[Spatial Hub](https://github.com/Chance-Konstruktion/ha-spatial-hub) an —
+der Hub entscheidet, wo gezeichnet wird. Ohne installierten Hub tut sie
+nichts, kostet aber auch nichts.
 
 ## Warum eine eigene Integration
 
@@ -19,11 +19,23 @@ Deshalb ein eigenes Paket statt eines Sonderfalls im Hub.
 
 ## Installation
 
-1. `custom_components/spatial_zwave` nach `<config>/custom_components/`
-   kopieren.
-2. Home Assistant neu starten.
-3. **Einstellungen → Geräte & Dienste → Integration hinzufügen → „Spatial
-   Hub: Z-Wave"**.
+### Über HACS
+
+1. HACS → **Integrationen** → Menü oben rechts → **Benutzerdefinierte
+   Repositories**.
+2. `https://github.com/Chance-Konstruktion/ha-spatial-zwave` als Kategorie
+   **Integration** hinzufügen.
+3. Installieren, Home Assistant neu starten.
+
+### Von Hand
+
+`custom_components/spatial_zwave` nach `<config>/custom_components/`
+kopieren, Home Assistant neu starten.
+
+### Danach
+
+**Einstellungen → Geräte & Dienste → Integration hinzufügen → „Spatial
+Hub: Z-Wave"**.
 
 Es gibt nichts einzustellen — der Dialog hat genau einen Knopf, und mehr
 als eine Instanz wird abgelehnt.

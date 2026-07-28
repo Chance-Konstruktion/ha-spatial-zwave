@@ -1,0 +1,6 @@
+{
+  "config": {
+    "step": { "user": { "title": "Z-Wave auf den Grundriss", "description": "Nichts einzustellen. Ist Floorplan-Hub installiert, erscheint die Ebene von selbst." } },
+    "abort": { "single_instance_allowed": "Schon eingerichtet." }
+  }
+}

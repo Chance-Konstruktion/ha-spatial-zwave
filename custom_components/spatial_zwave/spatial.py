@@ -84,17 +84,24 @@ def _driver(hass: HomeAssistant) -> Any:
     return None
 
 
-def _area_of(hass: HomeAssistant, node_id: Any) -> str | None:
-    """Where the user already put this node's device."""
+def _area_of(hass: HomeAssistant, home_id: Any, node_id: Any) -> str | None:
+    """Where the user already put this node's device.
+
+    Z-Wave JS identifies a device as ``(DOMAIN, f"{home_id}-{node_id}")`` --
+    the network's home ID, not the literal string "zwave_js". Confirmed
+    against a real installation's device registry; guessing the domain name
+    instead means the lookup never matches anything.
+    """
+    if home_id is None or node_id is None:
+        return None
     try:
         registry = dr.async_get(hass)
     except (AttributeError, KeyError):  # pragma: no cover
         return None
-    for identifier in (f"{ZWAVE_DOMAIN}-{node_id}", str(node_id)):
-        device = registry.async_get_device(identifiers={(ZWAVE_DOMAIN, identifier)})
-        if device:
-            return device.area_id
-    return None
+    device = registry.async_get_device(
+        identifiers={(ZWAVE_DOMAIN, f"{home_id}-{node_id}")}
+    )
+    return device.area_id if device else None
 
 
 def _statistic(statistics: Any, *names: str) -> Any:
@@ -112,12 +119,13 @@ def _from_driver(hass: HomeAssistant, driver: Any) -> dict[str, list]:
     own_id = getattr(getattr(controller, "own_node_id", None), "real", None) or getattr(
         controller, "own_node_id", None
     )
+    home_id = getattr(controller, "home_id", None)
 
     nodes = [
         node(
             CONTROLLER_ID,
             label="Z-Wave Controller",
-            area_id=_area_of(hass, own_id) if own_id else None,
+            area_id=_area_of(hass, home_id, own_id) if own_id else None,
             state="online",
             icon="mdi:z-wave",
             quelle="driver",
@@ -146,7 +154,7 @@ def _from_driver(hass: HomeAssistant, driver: Any) -> dict[str, list]:
             node(
                 f"node-{node_id}",
                 label=str(getattr(zwave_node, "name", "") or f"Node {node_id}"),
-                area_id=_area_of(hass, node_id),
+                area_id=_area_of(hass, home_id, node_id),
                 state=state,
                 icon="mdi:z-wave" if state == "online" else "mdi:sleep",
                 node_id=node_id,

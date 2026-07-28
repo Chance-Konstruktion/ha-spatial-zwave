@@ -50,19 +50,20 @@ class FakeNode:
 
 
 class FakeController:
-    def __init__(self, nodes=None, own_node_id=1):
+    def __init__(self, nodes=None, own_node_id=1, home_id="3378617508"):
         self.own_node_id = own_node_id
+        self.home_id = home_id
         self.nodes = {node.node_id: node for node in (nodes or [])}
 
 
 class FakeDriver:
-    def __init__(self, nodes=None):
+    def __init__(self, nodes=None, home_id="3378617508"):
         if nodes is None:
             nodes = [
                 FakeNode(2, name="Flurlicht", rssi=-58),
                 FakeNode(3, name="Fensterkontakt", status="asleep", rssi=-88),
             ]
-        self.controller = FakeController(nodes)
+        self.controller = FakeController(nodes, home_id=home_id)
 
 
 class _Client:
@@ -175,6 +176,34 @@ def test_edges_are_dashed_because_the_route_is_unknown():
     install_driver(hass, FakeDriver())
 
     assert all(edge["dashed"] for edge in payload(hass)["edges"])
+
+
+def test_a_node_is_placed_by_the_home_id_node_id_identifier():
+    """Z-Wave JS registers devices as f"{home_id}-{node_id}", not the
+    domain name -- confirmed against a real installation's registry."""
+    hass = FakeHass()
+    install_driver(hass, FakeDriver(home_id="3378617508"))
+    set_devices([
+        FakeDevice({(ZWAVE_DOMAIN, "3378617508-2")}, name="Flurlicht",
+                   area_id="flur", device_id="d2"),
+    ])
+    nodes = {n["id"]: n for n in payload(hass)["nodes"]}
+
+    assert nodes["node-2"]["area_id"] == "flur"
+
+
+def test_the_old_domain_prefixed_identifier_does_not_match():
+    """Guessing "zwave_js-<id>" instead of the real home ID must not
+    silently "work" by matching the wrong device."""
+    hass = FakeHass()
+    install_driver(hass, FakeDriver(home_id="3378617508"))
+    set_devices([
+        FakeDevice({(ZWAVE_DOMAIN, "zwave_js-2")}, name="Flurlicht",
+                   area_id="flur", device_id="d2"),
+    ])
+    nodes = {n["id"]: n for n in payload(hass)["nodes"]}
+
+    assert nodes["node-2"].get("area_id") is None
 
 
 def test_a_driver_that_explodes_falls_back_instead_of_vanishing():

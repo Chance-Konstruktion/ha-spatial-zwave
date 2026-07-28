@@ -1,1 +1,0 @@
-DOMAIN = "floorplan_zwave"

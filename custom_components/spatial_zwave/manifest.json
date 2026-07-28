@@ -1,0 +1,12 @@
+{
+  "domain": "spatial_zwave",
+  "name": "Spatial Hub: Z-Wave",
+  "codeowners": ["@chance-konstruktion"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/Chance-Konstruktion/ha-spatial-zwave",
+  "integration_type": "service",
+  "iot_class": "local_polling",
+  "requirements": [],
+  "version": "0.1.0"
+}

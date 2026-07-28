@@ -1,11 +1,11 @@
 {
   "domain": "spatial_zwave",
   "name": "Spatial Hub: Z-Wave",
-  "codeowners": [
-    "@chance-konstruktion"
-  ],
   "after_dependencies": [
     "zwave_js"
+  ],
+  "codeowners": [
+    "@chance-konstruktion"
   ],
   "config_flow": true,
   "dependencies": [],

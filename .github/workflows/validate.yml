@@ -17,6 +17,14 @@ jobs:
         uses: hacs/action@main
         with:
           category: integration
+          # `brands` wants this integration's icon to exist in the
+          # home-assistant/brands repository, which is a pull request over
+          # there rather than anything this repository can satisfy. It is
+          # a requirement for being listed in HACS by default, and none at
+          # all for installing this as a custom repository -- which is the
+          # only way it is offered today. Drop this line the day the brands
+          # PR is merged, and not before, so the check means something.
+          ignore: brands
 
   hassfest:
     name: hassfest

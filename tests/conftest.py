@@ -14,12 +14,6 @@ from __future__ import annotations
 
 import sys
 import types
-from pathlib import Path
-
-ROOT = Path(__file__).resolve().parents[1]
-for extra in (ROOT, ROOT / "tests"):
-    if str(extra) not in sys.path:
-        sys.path.insert(0, str(extra))
 
 
 def _module(name: str, **attributes) -> types.ModuleType:

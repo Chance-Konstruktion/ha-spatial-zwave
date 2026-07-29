@@ -272,6 +272,28 @@ def test_devices_of_other_integrations_are_not_drawn_as_zwave():
     )
 
 
+def test_a_foreign_device_with_a_longer_identifier_does_not_blank_the_layer():
+    """One stranger's three-part identifier used to cost us every node.
+
+    ``identifiers`` is documented as ``(domain, id)`` pairs, but nothing
+    enforces the pair. Unpacking into two names raised ValueError on the
+    first such device -- from any integration, anywhere in the registry --
+    and the hub reported the layer as 0 nodes, 0 edges with a traceback.
+    """
+    hass = FakeHass()
+    set_devices([
+        FakeDevice({("some_integration", "bus", "7")}, name="Fremd",
+                   device_id="x1"),
+        FakeDevice({(ZWAVE_DOMAIN, "abc-2")}, name="Flurlicht",
+                   device_id="d2"),
+    ])
+
+    data = payload(hass)
+    labels = {node["label"] for node in data["nodes"]}
+    assert "Flurlicht" in labels
+    assert "Fremd" not in labels
+
+
 # ── The shared vocabulary ─────────────────────────────────────────────
 
 

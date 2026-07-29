@@ -228,6 +228,26 @@ def _from_driver(hass: HomeAssistant, driver: Any) -> dict[str, list]:
     return {"nodes": nodes, "edges": list(seen.values())}
 
 
+def _is_zwave(device: Any) -> bool:
+    """Does this device belong to Z-Wave JS?
+
+    ``identifiers`` is typed as a set of ``(domain, id)`` pairs, but nothing
+    in Home Assistant enforces the pair -- an integration is free to store a
+    longer tuple, and some do. Unpacking into two names turns one such
+    device, anywhere in the registry and belonging to anyone, into a
+    ``ValueError`` that takes down the whole layer. Read the first element
+    and leave the rest of the tuple alone.
+    """
+    for identifier in getattr(device, "identifiers", ()) or ():
+        if (
+            isinstance(identifier, (tuple, list))
+            and identifier
+            and identifier[0] == ZWAVE_DOMAIN
+        ):
+            return True
+    return False
+
+
 def _from_registry(hass: HomeAssistant) -> dict[str, list]:
     """Everything the public registries know, which is the star and no more."""
     try:
@@ -238,7 +258,7 @@ def _from_registry(hass: HomeAssistant) -> dict[str, list]:
     devices = [
         device
         for device in getattr(registry, "devices", {}).values()
-        if any(domain == ZWAVE_DOMAIN for domain, _ in getattr(device, "identifiers", ()))
+        if _is_zwave(device)
     ]
     if not devices:
         return {"nodes": [], "edges": []}

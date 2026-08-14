@@ -2,6 +2,6 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 
-# Zwischenergebnis von tools/make_icon.py -- gehoert auf den GitLab-Avatar,
-# nicht ins Repository.
+# Zwischenergebnis von tools/make_provider_icons.py im Hub -- gehoert auf den
+# GitLab-Avatar, nicht ins Repository.
 avatar.png

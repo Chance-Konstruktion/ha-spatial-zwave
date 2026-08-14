@@ -29,10 +29,13 @@ from datetime import timedelta
 from typing import Any
 
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import (
+    device_registry as dr,
+    entity_registry as er,
+)
 from homeassistant.helpers.event import async_track_time_interval
 
-from .spatial_hub_provider import edge, spatial_provider, node
+from .spatial_hub_provider import anchor, edge, spatial_provider, node
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -84,7 +87,9 @@ def _driver(hass: HomeAssistant) -> Any:
     return None
 
 
-def _area_of(hass: HomeAssistant, home_id: Any, node_id: Any) -> str | None:
+def _ort_und_tuer(
+    hass: HomeAssistant, home_id: Any, node_id: Any
+) -> tuple[str | None, str | None]:
     """Where the user already put this node's device.
 
     Z-Wave JS identifies a device as ``(DOMAIN, f"{home_id}-{node_id}")`` --
@@ -93,15 +98,65 @@ def _area_of(hass: HomeAssistant, home_id: Any, node_id: Any) -> str | None:
     instead means the lookup never matches anything.
     """
     if home_id is None or node_id is None:
-        return None
+        return None, None
     try:
         registry = dr.async_get(hass)
     except (AttributeError, KeyError):  # pragma: no cover
-        return None
+        return None, None
     device = registry.async_get_device(
         identifiers={(ZWAVE_DOMAIN, f"{home_id}-{node_id}")}
     )
-    return device.area_id if device else None
+    if device is None:
+        return None, None
+    return getattr(device, "area_id", None), _tuer(hass, device.id)
+
+
+def _tuer(hass: HomeAssistant, device_id: str) -> str | None:
+    """Die Entitaet, die ein Nutzer meint, wenn er auf das Geraet tippt.
+
+    Ohne sie ist ein Z-Wave-Punkt eine Sackgasse: kein Klick zum Geraet,
+    keine Entitaetenliste im Aufklapper, und der Hub kann nichts
+    ergaenzen -- seine Anreicherung haengt an ``entity_id``.
+
+    Diagnose-Entitaeten stehen hinten an. Wer auf einen Rolladen tippt,
+    will ihn fahren und nicht seine Funkstatistik sehen.
+    """
+    try:
+        registry = er.async_get(hass)
+        eintraege = er.async_entries_for_device(
+            registry, device_id, include_disabled_entities=False
+        )
+    except (AttributeError, KeyError, TypeError):  # pragma: no cover
+        return None
+    if not eintraege:
+        return None
+    return sorted(
+        eintraege,
+        key=lambda eintrag: (
+            getattr(eintrag, "entity_category", None) is not None,
+            eintrag.entity_id,
+        ),
+    )[0].entity_id
+
+
+def _ankergewicht(rssi: Any) -> float:
+    """Aus einer Empfangsstaerke ein Ankergewicht.
+
+    Z-Wave-RSSI liegt brauchbar zwischen etwa -95 und -50 dBm. Der Wert
+    wird auf 0..1 gestreckt und quadriert, damit ein Nachbar im selben
+    Raum deutlich staerker zieht als einer zwei Waende weiter -- linear
+    gewichtet zoege ein schwacher Bezug fast so stark wie ein guter.
+
+    Ohne Messung bleibt ein kleines Gewicht stehen statt gar keines: die
+    Route ist bekannt, nur ihre Guete nicht, und "irgendwo dort" ist mehr
+    als "irgendwo".
+    """
+    try:
+        wert = float(rssi)
+    except (TypeError, ValueError):
+        return 0.25
+    anteil = (max(-95.0, min(-50.0, wert)) + 95.0) / 45.0
+    return max(0.01, anteil * anteil)
 
 
 def _statistic(statistics: Any, *names: str) -> Any:
@@ -147,7 +202,8 @@ def _from_driver(hass: HomeAssistant, driver: Any) -> dict[str, list]:
         node(
             CONTROLLER_ID,
             label="Z-Wave Controller",
-            area_id=_area_of(hass, home_id, own_id) if own_id else None,
+            area_id=(_ort_und_tuer(hass, home_id, own_id)[0] if own_id else None),
+            entity_id=(_ort_und_tuer(hass, home_id, own_id)[1] if own_id else None),
             state="online",
             icon="mdi:z-wave",
             quelle="driver",
@@ -172,11 +228,28 @@ def _from_driver(hass: HomeAssistant, driver: Any) -> dict[str, list]:
 
         statistics = getattr(zwave_node, "statistics", None)
         rssi = _statistic(statistics, "rssi", "last_rssi")
+        bereich, tuer = _ort_und_tuer(hass, home_id, node_id)
+        hops = _repeaters(statistics)
+        # Verankert am letzten Zwischenknoten der Route, nicht am
+        # Controller: der Repeater, ueber den ein Geraet funkt, steht in
+        # aller Regel im Nachbarraum -- der Controller kann drei Etagen
+        # entfernt im Schaltschrank haengen. Ohne Zwischenknoten funkt das
+        # Geraet direkt, dann ist der Controller der richtige Bezug.
+        #
+        # Nur der letzte Hop zaehlt, und nur, wenn der Knoten selbst
+        # keinen Bereich hat -- der Hub ueberstimmt eine Eintragung
+        # ohnehin nie.
+        anker = []
+        if not bereich:
+            nachbar = f"node-{hops[-1]}" if hops else CONTROLLER_ID
+            anker = [anchor(nachbar, _ankergewicht(rssi))]
         nodes.append(
             node(
                 f"node-{node_id}",
                 label=str(getattr(zwave_node, "name", "") or f"Node {node_id}"),
-                area_id=_area_of(hass, home_id, node_id),
+                area_id=bereich,
+                entity_id=tuer,
+                anchors=anker,
                 state=state,
                 icon="mdi:z-wave" if state == "online" else "mdi:sleep",
                 node_id=node_id,
@@ -199,7 +272,6 @@ def _from_driver(hass: HomeAssistant, driver: Any) -> dict[str, list]:
         # instead of one straight line to a device that is in fact three
         # rooms and two hops away. That chain is the thing a mesh map is
         # for: it says which node everything else depends on.
-        hops = _repeaters(statistics)
         chain = [CONTROLLER_ID, *[f"node-{hop}" for hop in hops],
                  f"node-{node_id}"]
         for index in range(len(chain) - 1):

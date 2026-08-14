@@ -9,9 +9,11 @@ is a fallback that does not work.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
-from conftest import FakeDevice, FakeEntry, FakeHass, set_devices
+from conftest import FakeDevice, FakeEntry, FakeHass, set_devices, set_entities
 
 from custom_components.spatial_zwave.spatial import (
     CONTROLLER_ID,
@@ -111,9 +113,13 @@ def payload(hass) -> dict:
 
 @pytest.fixture(autouse=True)
 def _clean_registry():
+    from conftest import ENTITIES
+
     set_devices([])
+    ENTITIES.clear()
     yield
     set_devices([])
+    ENTITIES.clear()
 
 
 # ── Registration ──────────────────────────────────────────────────────
@@ -388,3 +394,87 @@ def test_a_route_in_a_shape_we_did_not_expect_costs_nothing():
 
     edges = payload(hass)["edges"]
     assert len(edges) == 1 and edges[0]["dashed"], "falls back to the star"
+
+
+# ── Anker und die Tuer nach Home Assistant ────────────────────────────
+#
+# Beides ist neu und beides entscheidet, ob ein Punkt auf dem Grundriss
+# mehr ist als ein Punkt: der Anker sagt, wo er liegt, die Entitaet, was
+# ein Klick darauf tut.
+
+
+def test_a_node_without_an_area_is_anchored_to_its_last_repeater():
+    """Der Repeater steht im Nachbarraum, der Controller im Schaltschrank.
+
+    Am Controller zu verankern waere die falsche Antwort: er kann drei
+    Etagen tiefer haengen. Der letzte Zwischenknoten der Route ist das,
+    was ein Geraet wirklich hoert.
+    """
+    hass = FakeHass()
+    install_driver(hass, FakeDriver([FakeNode(2, name="Repeater", rssi=-55),
+                                     FakeNode(5, name="Sensor", rssi=-70,
+                                              repeaters=[2])]))
+    nodes = {node["id"]: node for node in payload(hass)["nodes"]}
+
+    anker = nodes["node-5"]["anchors"]
+    assert [a["id"] for a in anker] == ["node-2"]
+    assert 0 < anker[0]["weight"] <= 1
+
+
+def test_a_direct_node_is_anchored_to_the_controller():
+    """Ohne Zwischenknoten funkt das Geraet direkt -- dann stimmt der Bezug."""
+    hass = FakeHass()
+    install_driver(hass, FakeDriver([FakeNode(2, name="Lampe", rssi=-60)]))
+    nodes = {node["id"]: node for node in payload(hass)["nodes"]}
+
+    assert [a["id"] for a in nodes["node-2"]["anchors"]] == [CONTROLLER_ID]
+
+
+def test_a_stronger_signal_anchors_harder():
+    """Ohne das zoege ein schwacher Bezug fast so stark wie ein guter."""
+    hass = FakeHass()
+    install_driver(hass, FakeDriver([FakeNode(2, name="Nah", rssi=-55),
+                                     FakeNode(3, name="Fern", rssi=-88)]))
+    nodes = {node["id"]: node for node in payload(hass)["nodes"]}
+
+    nah = nodes["node-2"]["anchors"][0]["weight"]
+    fern = nodes["node-3"]["anchors"][0]["weight"]
+    assert nah > 4 * fern, f"{nah:.3f} gegen {fern:.3f} -- zu flach"
+
+
+def test_a_node_with_an_area_gets_no_anchors():
+    """Eine Eintragung wird nicht durch schwankenden Funk ersetzt.
+
+    Sonst wandert ein fest verbautes Geraet jede Nacht durchs Haus.
+    """
+    hass = FakeHass()
+    set_devices([FakeDevice(
+        identifiers={(ZWAVE_DOMAIN, "3378617508-2")}, area_id="kueche")])
+    install_driver(hass, FakeDriver([FakeNode(2, name="Lampe", rssi=-60)]))
+    nodes = {node["id"]: node for node in payload(hass)["nodes"]}
+
+    assert nodes["node-2"]["area_id"] == "kueche"
+    assert not nodes["node-2"].get("anchors")
+
+
+def test_a_node_carries_the_entity_a_user_would_tap():
+    """Ohne entity_id ist der Punkt eine Sackgasse.
+
+    Kein Klick zum Geraet, keine Entitaetenliste im Aufklapper -- und der
+    Hub kann nichts ergaenzen, denn seine Anreicherung haengt genau daran.
+    Die Diagnose-Entitaet ist nicht gemeint: wer auf einen Rolladen tippt,
+    will ihn fahren.
+    """
+    hass = FakeHass()
+    geraet = FakeDevice(
+        identifiers={(ZWAVE_DOMAIN, "3378617508-2")}, area_id="flur")
+    set_devices([geraet])
+    set_entities(geraet.id, [
+        SimpleNamespace(entity_id="sensor.rolladen_funk",
+                        entity_category="diagnostic"),
+        SimpleNamespace(entity_id="cover.rolladen", entity_category=None),
+    ])
+    install_driver(hass, FakeDriver([FakeNode(2, name="Rolladen")]))
+    nodes = {node["id"]: node for node in payload(hass)["nodes"]}
+
+    assert nodes["node-2"]["entity_id"] == "cover.rolladen"

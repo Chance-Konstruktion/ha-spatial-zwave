@@ -87,6 +87,32 @@ _module(
     async_get=lambda _hass: _REGISTRY,
 )
 
+
+# ── Das Entitaetsregister ─────────────────────────────────────────────
+#
+# Der Adapter holt sich daraus die Entitaet, die ein Nutzer meint, wenn er
+# auf einen Punkt tippt. Standardmaessig ist es leer: ein Knoten ohne
+# Entitaet ist der Normalfall in dieser Suite, und die Tests, die eine
+# brauchen, setzen sie selbst.
+
+ENTITIES: dict[str, list] = {}
+
+
+def set_entities(device_id: str, entries) -> None:
+    """Einem Geraet Entitaeten geben, fuer einen Test."""
+    ENTITIES[device_id] = list(entries)
+
+
+def _entries_for_device(_registry, device_id, **_kwargs):
+    return ENTITIES.get(device_id, [])
+
+
+_module(
+    "homeassistant.helpers.entity_registry",
+    async_get=lambda _hass: object(),
+    async_entries_for_device=_entries_for_device,
+)
+
 # ── The refresh timer ─────────────────────────────────────────────────
 #
 # Recorded rather than run: whether the adapter asks for a tick is worth

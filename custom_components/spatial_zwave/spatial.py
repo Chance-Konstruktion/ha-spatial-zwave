@@ -40,6 +40,53 @@ from .spatial_hub_provider import anchor, edge, spatial_provider, node
 _LOGGER = logging.getLogger(__name__)
 
 ZWAVE_DOMAIN = "zwave_js"
+
+
+def _registry_entries(registry: Any) -> list[Any]:
+    """Every device entry, without the deprecated mapping view.
+
+    ``registry.devices`` used to be a plain mapping, so ``.values()`` was
+    the way in. Core deprecated that in 2025.9 -- reading it as a mapping
+    logs a warning on every call and stops working in 2027.9. Iterating
+    the object itself yields the entries instead.
+
+    Both spellings live here because this integration still declares
+    2024.4 as its floor, and on those versions iterating yields the keys.
+    A key is a string, which an entry never is -- so the old shape is
+    recognised without asking Core for its version. On a current install
+    the subscript is never reached, which is the point: no warning.
+    """
+    devices = getattr(registry, "devices", None)
+    if not devices:
+        return []
+    entries: list[Any] = []
+    for entry in devices:
+        if isinstance(entry, str):  # pre-2025.9: iteration yields keys
+            entry = devices[entry]
+        entries.append(entry)
+    return entries
+
+
+def _geraet_zu_kennung(hass: HomeAssistant, registry: Any, kennung: tuple) -> Any:
+    """The device carrying ``kennung``, looked up per config entry.
+
+    ``async_get_device(identifiers=...)`` is deprecated as well: an
+    identifier is no longer unique across config entries, so Core wants
+    the entry named. The identifier here belongs to Z-Wave JS, not to us,
+    so the entries to ask are Z-Wave JS's own -- usually exactly one, and
+    more than one only in a house with two sticks.
+
+    On installs older than 2025.9 the per-entry lookup does not exist yet;
+    there the old call is still the correct one.
+    """
+    per_entry = getattr(registry, "async_get_device_by_identifier", None)
+    if per_entry is None:  # pre-2025.9
+        return registry.async_get_device(identifiers={kennung})
+    for eintrag in hass.config_entries.async_entries(ZWAVE_DOMAIN):
+        device = per_entry(kennung, eintrag.entry_id)
+        if device is not None:
+            return device
+    return None
 CONTROLLER_ID = "controller"
 
 # Z-Wave is not chatty about topology and the statistics move slowly. A
@@ -103,8 +150,8 @@ def _ort_und_tuer(
         registry = dr.async_get(hass)
     except (AttributeError, KeyError):  # pragma: no cover
         return None, None
-    device = registry.async_get_device(
-        identifiers={(ZWAVE_DOMAIN, f"{home_id}-{node_id}")}
+    device = _geraet_zu_kennung(
+        hass, registry, (ZWAVE_DOMAIN, f"{home_id}-{node_id}")
     )
     if device is None:
         return None, None
@@ -328,9 +375,7 @@ def _from_registry(hass: HomeAssistant) -> dict[str, list]:
         return {"nodes": [], "edges": []}
 
     devices = [
-        device
-        for device in getattr(registry, "devices", {}).values()
-        if _is_zwave(device)
+        device for device in _registry_entries(registry) if _is_zwave(device)
     ]
     if not devices:
         return {"nodes": [], "edges": []}

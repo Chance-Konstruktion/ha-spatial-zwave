@@ -1,6 +1,6 @@
 {
   "domain": "spatial_zwave",
-  "name": "Spatial Hub: Z-Wave",
+  "name": "spatial-hub: z-wave",
   "after_dependencies": [
     "zwave_js"
   ],

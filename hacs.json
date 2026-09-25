@@ -1,5 +1,5 @@
 {
-  "name": "Spatial Hub: Z-Wave",
+  "name": "spatial-hub: z-wave",
   "content_in_root": false,
   "render_readme": true,
   "homeassistant": "2024.4.0",

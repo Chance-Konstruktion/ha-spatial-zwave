@@ -29,7 +29,7 @@ Oder von Hand in HACS:
 
 1. HACS → **Integrationen** → Menü oben rechts → **Benutzerdefinierte
    Repositories**.
-2. `https://gitlab.schanz.ipv64.net/chance-konstruktion/ha-spatial-zwave` als Kategorie
+2. `https://github.com/Chance-Konstruktion/ha-spatial-zwave` als Kategorie
    **Integration** hinzufügen.
 3. Installieren, Home Assistant neu starten.
 

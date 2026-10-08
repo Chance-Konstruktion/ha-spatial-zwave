@@ -21,6 +21,12 @@ Deshalb ein eigenes Paket statt eines Sonderfalls im Hub.
 
 ### Über HACS
 
+Dieser Knopf öffnet das Repository in deiner eigenen HACS-Installation und trägt es dabei automatisch als benutzerdefiniertes Repository ein:
+
+[![Öffne deine Home-Assistant-Instanz und dieses Repository in HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Chance-Konstruktion&repository=ha-spatial-zwave&category=integration)
+
+Oder von Hand in HACS:
+
 1. HACS → **Integrationen** → Menü oben rechts → **Benutzerdefinierte
    Repositories**.
 2. `https://gitlab.schanz.ipv64.net/chance-konstruktion/ha-spatial-zwave` als Kategorie
@@ -36,6 +42,8 @@ kopieren, Home Assistant neu starten.
 
 **Einstellungen → Geräte & Dienste → Integration hinzufügen → „Spatial
 Hub: Z-Wave"**.
+
+[![Öffne deine Home-Assistant-Instanz und starte die Einrichtung der Integration.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=spatial_zwave)
 
 Es gibt nichts einzustellen — der Dialog hat genau einen Knopf, und mehr
 als eine Instanz wird abgelehnt.

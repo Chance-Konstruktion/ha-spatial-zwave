@@ -169,6 +169,15 @@ def test_the_controller_is_not_also_one_of_its_own_nodes():
     assert {node["id"] for node in data["nodes"]} == {CONTROLLER_ID, "node-2"}
 
 
+def test_a_dead_node_has_an_offline_icon_not_the_sleep_icon():
+    hass = FakeHass()
+    install_driver(hass, FakeDriver([FakeNode(2, name="Dimmer", status="dead")]))
+    node = next(n for n in payload(hass)["nodes"] if n["id"] == "node-2")
+
+    assert node["state"] == "offline"
+    assert node["icon"] == "mdi:lan-disconnect"
+
+
 def test_a_sleeping_battery_device_is_not_reported_as_broken():
     """Half the house would go red every night otherwise."""
     hass = FakeHass()
@@ -195,6 +204,22 @@ def test_edges_are_dashed_because_the_route_is_unknown():
     install_driver(hass, FakeDriver())
 
     assert all(edge["dashed"] for edge in payload(hass)["edges"])
+
+
+def test_shared_route_edge_keeps_rssi_when_child_is_listed_first():
+    """A child route must not hide the repeater's own measured link quality."""
+    hass = FakeHass()
+    child = FakeNode(3, name="Child", rssi=-83, repeaters=[4])
+    repeater = FakeNode(4, name="Repeater", rssi=-59)
+    install_driver(hass, FakeDriver([child, repeater]))
+
+    edge = next(
+        item for item in payload(hass)["edges"]
+        if item["source"] == CONTROLLER_ID and item["target"] == "node-4"
+    )
+
+    assert edge["value"] == -59
+    assert edge["quality"] == "good"
 
 
 def test_a_node_is_placed_by_the_home_id_node_id_identifier():
@@ -478,3 +503,25 @@ def test_a_node_carries_the_entity_a_user_would_tap():
     nodes = {node["id"]: node for node in payload(hass)["nodes"]}
 
     assert nodes["node-2"]["entity_id"] == "cover.rolladen"
+
+
+def test_registry_fallback_keeps_the_device_entity_link():
+    """The fallback should still let users open the HA entity from a node."""
+    hass = FakeHass()
+    device = FakeDevice(
+        identifiers={(ZWAVE_DOMAIN, "3378617508-2")},
+        name="Z-Wave Rolladen",
+        area_id="flur",
+        device_id="zdevice-2",
+    )
+    set_devices([device])
+    set_entities(device.id, [
+        SimpleNamespace(entity_id="sensor.rolladen_funk",
+                        entity_category="diagnostic"),
+        SimpleNamespace(entity_id="cover.rolladen", entity_category=None),
+    ])
+
+    nodes = {node["id"]: node for node in payload(hass)["nodes"]}
+
+    assert nodes[f"device-{device.id}"]["entity_id"] == "cover.rolladen"
+

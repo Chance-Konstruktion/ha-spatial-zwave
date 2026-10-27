@@ -298,7 +298,12 @@ def _from_driver(hass: HomeAssistant, driver: Any) -> dict[str, list]:
                 entity_id=tuer,
                 anchors=anker,
                 state=state,
-                icon="mdi:z-wave" if state == "online" else "mdi:sleep",
+                icon={
+                    "online": "mdi:z-wave",
+                    "asleep": "mdi:sleep",
+                    "offline": "mdi:lan-disconnect",
+                    "unknown": "mdi:help-circle-outline",
+                }.get(state, "mdi:help-circle-outline"),
                 node_id=node_id,
                 hersteller=getattr(
                     getattr(zwave_node, "device_config", None), "manufacturer", ""

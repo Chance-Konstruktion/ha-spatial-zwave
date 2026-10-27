@@ -197,6 +197,22 @@ def test_edges_are_dashed_because_the_route_is_unknown():
     assert all(edge["dashed"] for edge in payload(hass)["edges"])
 
 
+def test_shared_route_edge_keeps_rssi_when_child_is_listed_first():
+    """A child route must not hide the repeater's own measured link quality."""
+    hass = FakeHass()
+    child = FakeNode(3, name="Child", rssi=-83, repeaters=[4])
+    repeater = FakeNode(4, name="Repeater", rssi=-59)
+    install_driver(hass, FakeDriver([child, repeater]))
+
+    edge = next(
+        item for item in payload(hass)["edges"]
+        if item["source"] == CONTROLLER_ID and item["target"] == "node-4"
+    )
+
+    assert edge["value"] == -59
+    assert edge["quality"] == "good"
+
+
 def test_a_node_is_placed_by_the_home_id_node_id_identifier():
     """Z-Wave JS registers devices as f"{home_id}-{node_id}", not the
     domain name -- confirmed against a real installation's registry."""

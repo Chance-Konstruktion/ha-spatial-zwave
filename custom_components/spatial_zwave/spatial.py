@@ -341,9 +341,19 @@ def _from_driver(hass: HomeAssistant, driver: Any) -> dict[str, list]:
 
     # A repeater appears once per node that routes through it, so the same
     # hop is drawn many times. The renderer would stack identical lines.
+    # An intermediate hop has no RSSI of its own, though; if its child was
+    # visited before the repeater, blindly keeping the first copy discards
+    # the repeater's later measured value and quality. Keep one edge while
+    # enriching it with any actual measurement found for that same hop.
     seen: dict[tuple, dict] = {}
     for line in edges:
-        seen.setdefault((line["source"], line["target"]), line)
+        key = (line["source"], line["target"])
+        existing = seen.get(key)
+        if existing is None:
+            seen[key] = line
+        elif existing.get("value") is None and line.get("value") is not None:
+            existing["value"] = line["value"]
+            existing["quality"] = line["quality"]
     return {"nodes": nodes, "edges": list(seen.values())}
 
 

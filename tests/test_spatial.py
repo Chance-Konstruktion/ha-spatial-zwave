@@ -478,3 +478,25 @@ def test_a_node_carries_the_entity_a_user_would_tap():
     nodes = {node["id"]: node for node in payload(hass)["nodes"]}
 
     assert nodes["node-2"]["entity_id"] == "cover.rolladen"
+
+
+def test_registry_fallback_keeps_the_device_entity_link():
+    """The fallback should still let users open the HA entity from a node."""
+    hass = FakeHass()
+    device = FakeDevice(
+        identifiers={(ZWAVE_DOMAIN, "3378617508-2")},
+        name="Z-Wave Rolladen",
+        area_id="flur",
+        device_id="zdevice-2",
+    )
+    set_devices([device])
+    set_entities(device.id, [
+        SimpleNamespace(entity_id="sensor.rolladen_funk",
+                        entity_category="diagnostic"),
+        SimpleNamespace(entity_id="cover.rolladen", entity_category=None),
+    ])
+
+    nodes = {node["id"]: node for node in payload(hass)["nodes"]}
+
+    assert nodes[f"device-{device.id}"]["entity_id"] == "cover.rolladen"
+

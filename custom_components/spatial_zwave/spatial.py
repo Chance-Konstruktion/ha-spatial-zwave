@@ -393,6 +393,7 @@ def _from_registry(hass: HomeAssistant) -> dict[str, list]:
                 or getattr(device, "name", "")
                 or "Z-Wave Gerät",
                 area_id=getattr(device, "area_id", None),
+                entity_id=_tuer(hass, device.id),
                 icon="mdi:z-wave",
                 hersteller=getattr(device, "manufacturer", "") or "",
                 modell=getattr(device, "model", "") or "",

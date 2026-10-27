@@ -169,6 +169,15 @@ def test_the_controller_is_not_also_one_of_its_own_nodes():
     assert {node["id"] for node in data["nodes"]} == {CONTROLLER_ID, "node-2"}
 
 
+def test_a_dead_node_has_an_offline_icon_not_the_sleep_icon():
+    hass = FakeHass()
+    install_driver(hass, FakeDriver([FakeNode(2, name="Dimmer", status="dead")]))
+    node = next(n for n in payload(hass)["nodes"] if n["id"] == "node-2")
+
+    assert node["state"] == "offline"
+    assert node["icon"] == "mdi:lan-disconnect"
+
+
 def test_a_sleeping_battery_device_is_not_reported_as_broken():
     """Half the house would go red every night otherwise."""
     hass = FakeHass()
